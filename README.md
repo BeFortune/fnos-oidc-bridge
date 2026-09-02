@@ -68,7 +68,7 @@ $TRIM_APPDEST/app.sock
 1. **应用注册**:0.5.0 起**全自动**——安装/升级时 root 钩子会在 `trim` 库的 `oauth_app` 表注册上游应用(已存在则复用),并把 secret 回填进配置文件,无需手工 SQL。配置页面另有「从飞牛同步密钥 / 轮换上游密钥」按钮,可一键修复凭据不一致或轮换密钥(原理:`/etc/sudoers.d/fnosoidcbridge` 仅放行 root 助手脚本 `/usr/trim/lib/fnosoidcbridge/fnos-upstream-secret.sh`,卸载时自动清除)。手工 SQL 模板仍保留在 `fpk/app/etc/register_oauth_app.sql.example` 备查。
 2. **配置桥接**:升级到 0.2.0 后优先从 fnOS 桌面打开“OIDC 统一登录”配置中心；首次启动前若模板仍含占位值，可复制 `fpk/app/etc/config.example.json` 到 `$TRIM_PKGETC/config.json` 填入实际值，之后均可在网页维护。
 3. **构建**:本机执行 `scripts/build-fpk.sh`；官方 `fnpack` 已验证当前目录可生成 `fpk/fnosoidcbridge.fpk`。
-4. **安装**:`appcenter-cli install-fpk fnosoidcbridge.fpk`。安装后把最终配置复制到应用配置目录(通常是 `/var/apps/fnosoidcbridge/etc/config.json` 对应的 `@appconf` 路径)，再启动应用。
+4. **安装**:0.7.0 起通过应用中心网页安装时会弹出**安装向导**,可直接填 Issuer 对外地址和监听端口(留默认也行,装好后再改);**卸载时也有向导**,默认勾选「保留配置与数据」,取消勾选才会清除。CLI 安装:`appcenter-cli install-fpk fnosoidcbridge.fpk`(CLI 卸载无向导,默认保留配置)。安装后把最终配置复制到应用配置目录(通常是 `/var/apps/fnosoidcbridge/etc/config.json` 对应的 `@appconf` 路径)，再启动应用。
 
 > ⚠️ **网页安装提示 Failed to fetch 可以无视**:通过飞牛网页界面上传/更新 FPK 时,进度走完可能弹出「Failed to fetch」红色错误,但刷新应用中心会发现其实已安装成功。该问题来源暂未定位(疑似网页请求被中转设备拦截,SSH 安装无任何报错),遇到时刷新确认即可,不放心就用 SSH 的 `appcenter-cli install-fpk`。
 5. **反向代理**:完整手册见 [docs/reverse-proxy.md](docs/reverse-proxy.md)（通用 nginx / 雷池 WAF / 1Panel、局域网+公网双入口、排障速查）。要点:Issuer 必须等于对外完整地址、反代保留 `/oidc` 前缀、OIDC 路径不能套任何前置认证。监听地址（端口）0.6.0 起可在配置页面自定义，保存后重启应用生效。

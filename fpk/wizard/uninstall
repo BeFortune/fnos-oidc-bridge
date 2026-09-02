@@ -1,0 +1,17 @@
+[
+  {
+    "stepTitle": "卸载选项",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "默认保留配置（下游应用、密钥、登录会话），下次安装后可直接继续使用。"
+      },
+      {
+        "type": "switch",
+        "field": "wizard_keep_config",
+        "label": "保留配置与数据，供下次安装使用",
+        "initValue": "true"
+      }
+    ]
+  }
+]

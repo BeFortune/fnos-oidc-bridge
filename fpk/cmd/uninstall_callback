@@ -1,7 +1,7 @@
 #!/bin/sh
-# uninstall_callback: 移除 nginx 路由;默认保留 $TRIM_PKGETC(配置)与 $TRIM_PKGVAR(会话/密钥),
-# 如需彻底清除请手工删除 @appconf/fnosoidcbridge 与 @appdata/fnosoidcbridge。
-# 数据库中注册的 oauth_app 行同样保留,请按 docs/recon.md 的 SQL 反向删除。
+# uninstall_callback: 移除 nginx 路由与 sudoers 助手;按卸载向导选择决定是否保留配置。
+# wizard/uninstall 的复选框值以环境变量 wizard_keep_config 传入;
+# CLI 卸载(无向导)时变量不存在,默认保留。数据库 oauth_app 行始终保留。
 set -u
 # 撤掉配置页一键同步/轮换用的 sudoers 规则与 root 助手脚本
 rm -f /etc/sudoers.d/fnosoidcbridge
@@ -10,5 +10,17 @@ NGINX_CONF="/usr/trim/nginx/conf/conf.d/fnosoidcbridge.conf"
 if [ -f "$NGINX_CONF" ]; then
   rm -f "$NGINX_CONF"
   systemctl reload trim_nginx 2>/dev/null || { NGINX_PID=$(cat /run/nginx.pid 2>/dev/null || true); [ -n "$NGINX_PID" ] && kill -HUP "$NGINX_PID" 2>/dev/null || true; }
+fi
+
+KEEP="${wizard_keep_config:-true}"
+if [ "$KEEP" = "true" ]; then
+  echo "按卸载向导选择:保留配置($TRIM_PKGETC)与数据($TRIM_PKGVAR),下次安装可直接使用"
+else
+  for d in "${TRIM_PKGETC:-}" "${TRIM_PKGVAR:-}"; do
+    case "$d" in
+      */fnosoidcbridge*) rm -rf "$d"; echo "已删除: $d" ;;
+      *) [ -n "$d" ] && echo "[!] 路径不含应用名,跳过删除: $d" >&2 ;;
+    esac
+  done
 fi
 exit 0

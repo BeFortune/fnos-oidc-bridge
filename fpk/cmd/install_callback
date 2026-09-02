@@ -12,9 +12,26 @@ RUN_USER="${TRIM_RUN_USERNAME:-fnosoidcbridge}"
 [ -n "$VAR_DIR" ] && mkdir -p "$VAR_DIR"
 
 # 安装后 target 已可见,此时才复制配置模板;绝不覆盖用户已有配置。
+JUST_COPIED=""
 if [ -n "$ETC_DIR" ] && [ ! -f "$ETC_DIR/config.json" ] && [ -n "$APP_DIR" ] && [ -f "$APP_DIR/etc/config.example.json" ]; then
   cp "$APP_DIR/etc/config.example.json" "$ETC_DIR/config.json"
+  JUST_COPIED=1
   echo "已生成配置模板: $ETC_DIR/config.json"
+fi
+
+# 应用安装向导(wizard/install)收集的初始值;仅首次安装(模板刚复制)时套用,升级/重装不重写用户配置
+# 向导输入按不可信字符串处理:先过滤 sed 分隔符与引号再写入
+if [ -n "$JUST_COPIED" ]; then
+  WL=$(printf '%s' "${wizard_listen:-}" | tr -d '|"&' )
+  WB=$(printf '%s' "${wizard_base_url:-}" | tr -d '|"&')
+  if [ -n "$WL" ] && [ "$WL" != "127.0.0.1:4223" ]; then
+    sed -i "s|\"listen\": \"127.0.0.1:4223\"|\"listen\": \"$WL\"|" "$ETC_DIR/config.json" 2>/dev/null || true
+  fi
+  case "$WB" in
+    http://*|https://*)
+      sed -i "s|\"base_url\": \"https://<你的域名>/oidc\"|\"base_url\": \"$WB\"|" "$ETC_DIR/config.json" 2>/dev/null || true
+      ;;
+  esac
 fi
 
 if [ -n "$ETC_DIR" ] && [ -f "$ETC_DIR/config.json" ] && grep -qE '请改成|<你的|安全渠道|<随机|REPLACE_WITH' "$ETC_DIR/config.json" 2>/dev/null; then

@@ -1,0 +1,30 @@
+[
+  {
+    "stepTitle": "初始配置",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "以下配置稍后都可以在桌面「OIDC SSO Bridge」配置页修改；不确定就保持默认，装好后再填。"
+      },
+      {
+        "type": "text",
+        "field": "wizard_base_url",
+        "label": "Issuer 对外地址（反代后的完整地址，可留空稍后填）",
+        "initValue": "",
+        "rules": [
+          { "required": false, "pattern": "^(|https?://\\S+)$", "message": "留空或填完整 URL，如 https://oidc.example.com" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_listen",
+        "label": "监听地址（反代上游端口）",
+        "initValue": "127.0.0.1:4223",
+        "rules": [
+          { "required": true, "message": "监听地址不能为空" },
+          { "pattern": "^\\S+:[0-9]+$", "message": "格式：主机:端口，如 127.0.0.1:4223 或 0.0.0.0:8321" }
+        ]
+      }
+    ]
+  }
+]
