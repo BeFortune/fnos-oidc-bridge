@@ -11,18 +11,18 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
 // adminSaveRequest intentionally omits fields that are not safe to change from
-// the web UI (signing key, data directory, runtime ports and TTLs).
+// the web UI (signing key, data directory, gateway prefix and TTLs).
+// listen 可改但只写盘:监听重建需要重启进程,页面会提示用户重启应用。
 type adminSaveRequest struct {
 	BaseURL      string            `json:"base_url"`
 	PublicPrefix string            `json:"public_prefix"`
+	Listen       string            `json:"listen"`
 	FnOS         adminFnOSRequest  `json:"fnos"`
 	Clients      []adminClientSave `json:"clients"`
 	AllowUsers   []string          `json:"allow_users"`
@@ -49,6 +49,7 @@ type adminClientSave struct {
 type adminConfigResponse struct {
 	BaseURL       string              `json:"base_url"`
 	PublicPrefix  string              `json:"public_prefix"`
+	Listen        string              `json:"listen"`
 	GatewayPrefix string              `json:"gateway_prefix"`
 	FnOS          adminFnOSResponse   `json:"fnos"`
 	Clients       []adminClientStatus `json:"clients"`
@@ -102,7 +103,6 @@ func (s *Server) adminRoutes() http.Handler {
 	register(http.MethodPost, "/admin/api/rotate-secret", s.handleAdminRotateSecret)
 	register(http.MethodPost, "/admin/api/test-upstream", s.handleAdminTestUpstream)
 	register(http.MethodPost, "/admin/api/export", s.handleAdminExport)
-	register(http.MethodGet, "/admin/api/backups", s.handleAdminListBackups)
 	register(http.MethodPost, "/admin/api/import", s.handleAdminImport)
 	register(http.MethodPost, "/admin/api/upstream-secret", s.handleAdminUpstreamSecret)
 	return s.logMiddleware(mux)
@@ -362,12 +362,6 @@ func (s *Server) handleAdminTestUpstream(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "app": info})
 }
 
-// backupsDir 与 config.json 同目录下的 exports/,即 $TRIM_PKGETC/exports。
-// 该目录随应用配置一起被 fnOS 保留,卸载后重装仍可从这里导入。
-func (s *Server) backupsDir() string {
-	return filepath.Join(filepath.Dir(s.configPath), "exports")
-}
-
 func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 	if !s.adminAuthorized(r, true) {
 		writeJSON(w, http.StatusForbidden, adminErrorResponse{Error: "管理员权限 required or origin invalid"})
@@ -375,7 +369,6 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Password string `json:"password"`
-		Target   string `json:"target"` // download | nas
 	}
 	if err := decodeJSONBody(w, r, 8<<10, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: err.Error()})
@@ -386,60 +379,13 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: err.Error()})
 		return
 	}
+	// 备份只下发到浏览器下载,不在 NAS 上落盘留存。
 	name := "fnosoidcbridge-backup-" + time.Now().Format("20060102-150405") + ".enc.json"
-	if in.Target == "nas" {
-		dir := s.backupsDir()
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			writeJSON(w, http.StatusInternalServerError, adminErrorResponse{Error: "创建备份目录失败: " + err.Error()})
-			return
-		}
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, blob, 0o600); err != nil {
-			writeJSON(w, http.StatusInternalServerError, adminErrorResponse{Error: "写入备份失败: " + err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "name": name, "path": path})
-		return
-	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(blob)
-}
-
-type backupFileInfo struct {
-	Name    string `json:"name"`
-	Size    int64  `json:"size"`
-	ModTime string `json:"mod_time"`
-}
-
-func (s *Server) handleAdminListBackups(w http.ResponseWriter, r *http.Request) {
-	if !s.adminAuthorized(r, false) {
-		writeJSON(w, http.StatusForbidden, adminErrorResponse{Error: "管理员权限 required"})
-		return
-	}
-	entries, err := os.ReadDir(s.backupsDir())
-	if err != nil {
-		if os.IsNotExist(err) {
-			writeJSON(w, http.StatusOK, map[string]any{"backups": []backupFileInfo{}})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, adminErrorResponse{Error: "读取备份目录失败: " + err.Error()})
-		return
-	}
-	list := make([]backupFileInfo, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".enc.json") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		list = append(list, backupFileInfo{Name: e.Name(), Size: info.Size(), ModTime: info.ModTime().Format(time.RFC3339)})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"backups": list})
 }
 
 func (s *Server) handleAdminImport(w http.ResponseWriter, r *http.Request) {
@@ -449,41 +395,22 @@ func (s *Server) handleAdminImport(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Password string `json:"password"`
-		Target   string `json:"target"` // pc | nas
-		Name     string `json:"name"`   // target=nas 时,exports 目录内的文件名
-		Data     string `json:"data"`   // target=pc 时,备份文件原文
+		Data     string `json:"data"` // 备份文件原文(浏览器上传)
 	}
 	if err := decodeJSONBody(w, r, 2<<20, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: err.Error()})
 		return
 	}
-	var blob []byte
-	if in.Target == "nas" {
-		// 只允许读 exports 目录内的普通文件,防路径穿越。
-		name := filepath.Base(in.Name)
-		if name == "" || name != in.Name || !strings.HasSuffix(name, ".enc.json") {
-			writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: "非法的备份文件名"})
-			return
-		}
-		data, err := os.ReadFile(filepath.Join(s.backupsDir(), name))
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, adminErrorResponse{Error: "备份文件不存在: " + err.Error()})
-			return
-		}
-		blob = data
-	} else {
-		if in.Data == "" {
-			writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: "备份内容为空"})
-			return
-		}
-		blob = []byte(in.Data)
+	if in.Data == "" {
+		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: "备份内容为空"})
+		return
 	}
-	imported, err := decryptConfig(blob, in.Password)
+	imported, err := decryptConfig([]byte(in.Data), in.Password)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: err.Error()})
 		return
 	}
-	// 只接管网页可管理的字段,端口/数据目录/TTL 等运行时项保持当前值,
+	// 只接管网页可管理的字段(含监听地址),数据目录/TTL/签名算法等运行时项保持当前值,
 	// 与 handleAdminSave 的安全边界一致。
 	current, err := cloneConfig(s.config())
 	if err != nil {
@@ -493,6 +420,7 @@ func (s *Server) handleAdminImport(w http.ResponseWriter, r *http.Request) {
 	candidate := mergeAdminConfig(current, adminSaveRequest{
 		BaseURL:      imported.BaseURL,
 		PublicPrefix: imported.PublicPrefix,
+		Listen:       imported.Listen,
 		FnOS: adminFnOSRequest{
 			BaseURL:            imported.FnOS.BaseURL,
 			PublicBaseURL:      imported.FnOS.PublicBaseURL,
@@ -530,7 +458,7 @@ func (s *Server) publicConfig(cfg *Config) adminConfigResponse {
 		clients = append(clients, adminClientStatus{ID: c.ID, Name: c.Name, RedirectURIs: append([]string(nil), c.RedirectURIs...), HasSecret: c.Secret != ""})
 	}
 	return adminConfigResponse{
-		BaseURL: cfg.BaseURL, PublicPrefix: cfg.PublicPrefix, GatewayPrefix: cfg.GatewayPrefix,
+		BaseURL: cfg.BaseURL, PublicPrefix: cfg.PublicPrefix, Listen: cfg.Listen, GatewayPrefix: cfg.GatewayPrefix,
 		FnOS:    adminFnOSResponse{BaseURL: cfg.FnOS.BaseURL, PublicBaseURL: cfg.FnOS.PublicBaseURL, ClientID: cfg.FnOS.ClientID, HasClientSecret: cfg.FnOS.ClientSecret != "", InsecureSkipVerify: cfg.FnOS.InsecureSkipVerify},
 		Clients: clients, AllowUsers: append([]string(nil), cfg.AllowUsers...), AdminUsers: append([]string(nil), cfg.AdminUsers...),
 		Endpoints: endpointResponse{Issuer: cfg.BaseURL, Discovery: cfg.BaseURL + "/.well-known/openid-configuration", Authorization: cfg.BaseURL + "/authorize", Token: cfg.BaseURL + "/token", UserInfo: cfg.BaseURL + "/userinfo", JWKS: cfg.BaseURL + "/jwks.json"},
@@ -540,6 +468,9 @@ func (s *Server) publicConfig(cfg *Config) adminConfigResponse {
 func mergeAdminConfig(current *Config, in adminSaveRequest) *Config {
 	current.BaseURL = strings.TrimRight(strings.TrimSpace(in.BaseURL), "/")
 	current.PublicPrefix = normalizePrefix(in.PublicPrefix, current.PublicPrefix)
+	if l := strings.TrimSpace(in.Listen); l != "" {
+		current.Listen = l
+	}
 	current.FnOS.BaseURL = strings.TrimRight(strings.TrimSpace(in.FnOS.BaseURL), "/")
 	current.FnOS.PublicBaseURL = strings.TrimRight(strings.TrimSpace(in.FnOS.PublicBaseURL), "/")
 	current.FnOS.ClientID = strings.TrimSpace(in.FnOS.ClientID)
