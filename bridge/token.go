@@ -146,7 +146,7 @@ func (s *Server) accessJWT(client *ClientConfig, scope string, sess *BridgeSessi
 	for k, v := range s.userClaims(sess) {
 		claims[k] = v
 	}
-	return issueJWT(s.key, s.kid, claims, access)
+	return issueJWT(s.key, cfg.SigningAlg, s.kid, claims, access)
 }
 
 func (s *Server) idToken(client *ClientConfig, nonce string, sess *BridgeSession) (string, error) {
@@ -159,7 +159,7 @@ func (s *Server) idToken(client *ClientConfig, nonce string, sess *BridgeSession
 	for k, v := range s.userClaims(sess) {
 		claims[k] = v
 	}
-	return issueJWT(s.key, s.kid, claims, access)
+	return issueJWT(s.key, cfg.SigningAlg, s.kid, claims, access)
 }
 
 func (s *Server) issueTokens(w http.ResponseWriter, client *ClientConfig, scope, nonce string, sess *BridgeSession, refresh string) {
@@ -190,7 +190,7 @@ func (s *Server) handleUserinfo(w http.ResponseWriter, r *http.Request) {
 		tokenErr(w, http.StatusUnauthorized, "invalid_token", "缺少 Bearer access_token")
 		return
 	}
-	claims, err := verifyJWT(&s.key.PublicKey, raw)
+	claims, err := verifyJWT(s.key.Public(), s.config().SigningAlg, raw)
 	if err != nil {
 		tokenErr(w, http.StatusUnauthorized, "invalid_token", "access_token 无效或已过期")
 		return

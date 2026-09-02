@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto"
 	"crypto/ecdsa"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -19,7 +21,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // discoveryDoc 输出标准 OIDC Discovery 文档,下游应用据此自动接入。
-func discoveryDoc(base string) map[string]any {
+func discoveryDoc(base, alg string) map[string]any {
 	return map[string]any{
 		"issuer":                                base,
 		"authorization_endpoint":                base + "/authorize",
@@ -29,7 +31,7 @@ func discoveryDoc(base string) map[string]any {
 		"response_types_supported":              []string{"code"},
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
 		"subject_types_supported":               []string{"public"},
-		"id_token_signing_alg_values_supported": []string{"ES256"},
+		"id_token_signing_alg_values_supported": []string{alg},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"scopes_supported":                      []string{"openid", "profile", "email", "offline_access"},
@@ -40,36 +42,59 @@ func discoveryDoc(base string) map[string]any {
 	}
 }
 
-func jwksDoc(key *ecdsa.PrivateKey, kid string) map[string]any {
-	pub := key.PublicKey
-	return map[string]any{
-		"keys": []map[string]any{{
-			"kty": "EC",
-			"crv": "P-256",
-			"use": "sig",
-			"alg": "ES256",
-			"kid": kid,
-			"x":   base64.RawURLEncoding.EncodeToString(pub.X.FillBytes(make([]byte, 32))),
-			"y":   base64.RawURLEncoding.EncodeToString(pub.Y.FillBytes(make([]byte, 32))),
-		}},
+func jwksDoc(key crypto.Signer, alg, kid string) map[string]any {
+	switch pub := key.Public().(type) {
+	case *rsa.PublicKey:
+		return map[string]any{
+			"keys": []map[string]any{{
+				"kty": "RSA",
+				"use": "sig",
+				"alg": alg,
+				"kid": kid,
+				"n":   base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
+				"e":   base64.RawURLEncoding.EncodeToString(bigEndianUint(pub.E)),
+			}},
+		}
+	case *ecdsa.PublicKey:
+		return map[string]any{
+			"keys": []map[string]any{{
+				"kty": "EC",
+				"crv": "P-256",
+				"use": "sig",
+				"alg": alg,
+				"kid": kid,
+				"x":   base64.RawURLEncoding.EncodeToString(pub.X.FillBytes(make([]byte, 32))),
+				"y":   base64.RawURLEncoding.EncodeToString(pub.Y.FillBytes(make([]byte, 32))),
+			}},
+		}
+	default:
+		return map[string]any{"keys": []map[string]any{}}
 	}
 }
 
-// issueJWT 用桥接的 ES256 密钥签发 access/id token。
-func issueJWT(key *ecdsa.PrivateKey, kid string, claims jwt.MapClaims, ttl time.Duration) (string, error) {
+func bigEndianUint(v int) []byte {
+	b := []byte{byte(v >> 16), byte(v >> 8), byte(v)}
+	for len(b) > 1 && b[0] == 0 {
+		b = b[1:]
+	}
+	return b
+}
+
+// issueJWT 用桥接签名密钥签发 access/id token。
+func issueJWT(key crypto.Signer, alg, kid string, claims jwt.MapClaims, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims["iat"] = now.Unix()
 	claims["exp"] = now.Add(ttl).Unix()
-	tok := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+	tok := jwt.NewWithClaims(jwt.GetSigningMethod(alg), claims)
 	tok.Header["kid"] = kid
 	return tok.SignedString(key)
 }
 
-// verifyJWT 校验本桥接签发的 JWT(仅接受 ES256)。
-func verifyJWT(key *ecdsa.PublicKey, raw string) (jwt.MapClaims, error) {
+// verifyJWT 校验本桥接签发的 JWT(仅接受配置的算法)。
+func verifyJWT(key crypto.PublicKey, alg, raw string) (jwt.MapClaims, error) {
 	tok, err := jwt.Parse(raw, func(t *jwt.Token) (any, error) {
 		return key, nil
-	}, jwt.WithValidMethods([]string{"ES256"}))
+	}, jwt.WithValidMethods([]string{alg}))
 	if err != nil {
 		return nil, err
 	}

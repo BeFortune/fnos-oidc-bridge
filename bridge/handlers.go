@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/ecdsa"
+	"crypto"
 	"crypto/subtle"
 	"fmt"
 	"log"
@@ -18,7 +18,7 @@ type Server struct {
 	configPath string
 	store      *Store
 	fnos       *FnOSClient
-	key        *ecdsa.PrivateKey
+	key        crypto.Signer
 	kid        string
 }
 
@@ -114,11 +114,11 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, discoveryDoc(s.config().BaseURL))
+	writeJSON(w, http.StatusOK, discoveryDoc(s.config().BaseURL, s.config().SigningAlg))
 }
 
 func (s *Server) handleJWKS(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, jwksDoc(s.key, s.kid))
+	writeJSON(w, http.StatusOK, jwksDoc(s.key, s.config().SigningAlg, s.kid))
 }
 
 // handleAuthorize 是标准 OIDC 授权入口:校验下游请求后,

@@ -119,7 +119,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	cfg.normalize()
 
-	store, err := NewStore(cfg.DataDir, 2*time.Minute, time.Hour, time.Hour)
+	store, err := NewStore(cfg.DataDir, 2*time.Minute, time.Hour, time.Hour, cfg.SigningAlg)
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}

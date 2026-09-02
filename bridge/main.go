@@ -35,7 +35,7 @@ func main() {
 	}
 
 	_, refresh, code, session := cfg.TTLs()
-	store, err := NewStore(cfg.DataDir, code, session, refresh)
+	store, err := NewStore(cfg.DataDir, code, session, refresh, cfg.SigningAlg)
 	if err != nil {
 		log.Fatalf("初始化存储失败: %v", err)
 	}

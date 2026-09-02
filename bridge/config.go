@@ -64,6 +64,8 @@ type Config struct {
 	CodeTTLSec         int `json:"code_ttl_sec"`
 	SessionTTLSec      int `json:"session_ttl_sec"`
 
+	SigningAlg string `json:"signing_alg"` // token 签名算法:ES256(默认) 或 RS256;某些下游应用只认 RS256
+
 	FnOS    FnOSConfig     `json:"fnos"`
 	Clients []ClientConfig `json:"clients"`
 	// 准入控制:AllowUsers 为空 = 放行所有飞牛账号;否则仅放行列出的用户名。
@@ -113,6 +115,9 @@ func (c *Config) normalize() {
 	}
 	if c.SessionTTLSec == 0 {
 		c.SessionTTLSec = 12 * 3600
+	}
+	if c.SigningAlg == "" {
+		c.SigningAlg = "ES256"
 	}
 	if c.FnOS.Source == "" {
 		c.FnOS.Source = "Trim-NAS"
@@ -171,6 +176,9 @@ func (c *Config) validate() error {
 	}
 	if c.AccessTokenTTLSec <= 0 || c.RefreshTokenTTLSec <= 0 || c.CodeTTLSec <= 0 || c.SessionTTLSec <= 0 {
 		return fmt.Errorf("所有 token/session TTL 必须为正数")
+	}
+	if c.SigningAlg != "ES256" && c.SigningAlg != "RS256" {
+		return fmt.Errorf("signing_alg 只支持 ES256 或 RS256,当前为 %q", c.SigningAlg)
 	}
 	idPattern := regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 	seen := make(map[string]bool, len(c.Clients))

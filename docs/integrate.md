@@ -19,9 +19,9 @@
 | Client ID | `immich` |
 | Client Secret | (config.json 里 immich 的 secret) |
 | Scope | `openid profile` |
-| Signing Algorithm | RS256 **❗见下方"签名算法"** |
+| Signing Algorithm | 自动 / RS256 **见下方"签名算法"** |
 
-> ❗签名算法:桥接目前只签 ES256。Immich 支持从 discovery 自动读取 `id_token_signing_alg_values_supported`,若强制 RS256 报错,改用自动模式;确有应用写死 RS256 的,告诉我,桥接可加 RS256 双签(半小时代码)。
+> 签名算法:桥接默认用 ES256 签名。0.4.0 起在 `config.json` 里加 `"signing_alg": "RS256"` 即可切换为 RS256(RSA-2048),满足写死 RS256 的应用。切换后签名密钥自动重建,已签发的 token 全部失效,用户重新登录即可;下游应用从 discovery/JWKS 自动获取新算法与新公钥。Access Token 本身是 JWT(自包含),要求 "JWT-Empty" 或自动模式的应用均可接入。
 
 ## Jellyfin(SSO-Auth 插件)
 
