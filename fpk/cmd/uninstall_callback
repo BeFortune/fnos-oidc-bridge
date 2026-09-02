@@ -3,6 +3,9 @@
 # 如需彻底清除请手工删除 @appconf/fnosoidcbridge 与 @appdata/fnosoidcbridge。
 # 数据库中注册的 oauth_app 行同样保留,请按 docs/recon.md 的 SQL 反向删除。
 set -u
+# 撤掉配置页一键同步/轮换用的 sudoers 规则与 root 助手脚本
+rm -f /etc/sudoers.d/fnosoidcbridge
+rm -rf /usr/trim/lib/fnosoidcbridge
 NGINX_CONF="/usr/trim/nginx/conf/conf.d/fnosoidcbridge.conf"
 if [ -f "$NGINX_CONF" ]; then
   rm -f "$NGINX_CONF"

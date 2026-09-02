@@ -65,7 +65,7 @@ $TRIM_APPDEST/app.sock
 
 前置:fnOS 1.2.x(NAS 局域网可达)、SSH 已开启、能拿到 root(sudo)。实测环境为 fnOS 1.2.0505 / Debian 12 / PostgreSQL 15。
 
-1. **应用注册**:在 `trim` 数据库执行 `fpk/app/etc/register_oauth_app.sql.example`(该 SQL 已按实机表结构定稿；若序列与主键不同步，先执行其中的 `setval`)。当前测试应用为 `FNOSOIDCB1`、`app_id=6`。
+1. **应用注册**:0.5.0 起**全自动**——安装/升级时 root 钩子会在 `trim` 库的 `oauth_app` 表注册上游应用(已存在则复用),并把 secret 回填进配置文件,无需手工 SQL。配置页面另有「从飞牛同步密钥 / 轮换上游密钥」按钮,可一键修复凭据不一致或轮换密钥(原理:`/etc/sudoers.d/fnosoidcbridge` 仅放行 root 助手脚本 `/usr/trim/lib/fnosoidcbridge/fnos-upstream-secret.sh`,卸载时自动清除)。手工 SQL 模板仍保留在 `fpk/app/etc/register_oauth_app.sql.example` 备查。
 2. **配置桥接**:升级到 0.2.0 后优先从 fnOS 桌面打开“OIDC 统一登录”配置中心；首次启动前若模板仍含占位值，可复制 `fpk/app/etc/config.example.json` 到 `$TRIM_PKGETC/config.json` 填入实际值，之后均可在网页维护。
 3. **构建**:本机执行 `scripts/build-fpk.sh`；官方 `fnpack` 已验证当前目录可生成 `fpk/fnosoidcbridge.fpk`。
 4. **安装**:`appcenter-cli install-fpk fnosoidcbridge.fpk`。安装后把最终配置复制到应用配置目录(通常是 `/var/apps/fnosoidcbridge/etc/config.json` 对应的 `@appconf` 路径)，再启动应用。

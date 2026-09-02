@@ -18,7 +18,17 @@ func main() {
 	dataDir := flag.String("data-dir", "", "数据目录(覆盖配置里的 data_dir)")
 	listenOverride := flag.String("listen", "", "公共 OIDC 监听地址(覆盖配置里的 listen)")
 	adminSocket := flag.String("admin-socket", "", "fnOS 管理网关 Unix Socket 路径")
+	secretHelper := flag.String("secret-helper", "", "上游密钥管理助手脚本路径(供管理页一键同步/轮换)")
+	setFnosSecret := flag.String("set-fnos-secret", "", "把上游 client_secret 写入配置文件后退出(安装脚本用)")
+	setFnosClientID := flag.String("set-fnos-client-id", "", "配合 -set-fnos-secret 同时写入 client_id")
 	flag.Parse()
+
+	if *setFnosSecret != "" {
+		if err := setFnosCredential(*configPath, *setFnosClientID, *setFnosSecret); err != nil {
+			log.Fatalf("写入上游凭据失败: %v", err)
+		}
+		return
+	}
 
 	cfg, err := LoadConfig(*configPath)
 	if err != nil {
@@ -42,12 +52,13 @@ func main() {
 	key, kid := store.SigningKey()
 
 	srv := &Server{
-		cfg:        cfg,
-		configPath: *configPath,
-		store:      store,
-		fnos:       NewFnOSClient(cfg.FnOS),
-		key:        key,
-		kid:        kid,
+		cfg:          cfg,
+		configPath:   *configPath,
+		store:        store,
+		fnos:         NewFnOSClient(cfg.FnOS),
+		key:          key,
+		kid:          kid,
+		secretHelper: *secretHelper,
 	}
 
 	publicLn, err := listen(cfg.Listen)

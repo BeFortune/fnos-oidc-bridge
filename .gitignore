@@ -3,7 +3,7 @@
 bridge/data/
 bridge/config.json
 recon/fnos-recon-*.txt
-fpk/app/bin/
+fpk/app/bin/fnos-oidc-bridge-linux-*
 *.log
 
 # 私有部署与本地凭据

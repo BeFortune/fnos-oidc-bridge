@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -103,6 +104,7 @@ func (s *Server) adminRoutes() http.Handler {
 	register(http.MethodPost, "/admin/api/export", s.handleAdminExport)
 	register(http.MethodGet, "/admin/api/backups", s.handleAdminListBackups)
 	register(http.MethodPost, "/admin/api/import", s.handleAdminImport)
+	register(http.MethodPost, "/admin/api/upstream-secret", s.handleAdminUpstreamSecret)
 	return s.logMiddleware(mux)
 }
 
@@ -269,6 +271,80 @@ func (s *Server) handleAdminRotateSecret(w http.ResponseWriter, r *http.Request)
 	}
 	s.applyConfig(current)
 	writeJSON(w, http.StatusOK, map[string]any{"client_id": in.ClientID, "client_secret": secret, "warning": "secret 只显示这一次"})
+}
+
+// handleAdminUpstreamSecret 通过 root 助手脚本同步/轮换飞牛上游 oauth_app 密钥。
+// secret 只写进配置文件,不回传给浏览器。
+func (s *Server) handleAdminUpstreamSecret(w http.ResponseWriter, r *http.Request) {
+	if !s.adminAuthorized(r, true) {
+		writeJSON(w, http.StatusForbidden, adminErrorResponse{Error: "管理员权限 required or origin invalid"})
+		return
+	}
+	if s.secretHelper == "" {
+		writeJSON(w, http.StatusNotImplemented, adminErrorResponse{Error: "本安装未启用一键管理(缺少 secret-helper 配置),请手工 SQL 处理"})
+		return
+	}
+	var in struct {
+		Mode string `json:"mode"`
+	}
+	if err := decodeJSONBody(w, r, 8<<10, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: err.Error()})
+		return
+	}
+	if in.Mode != "sync" && in.Mode != "rotate" {
+		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: "mode 只支持 sync 或 rotate"})
+		return
+	}
+	run := s.runSecretHelper
+	if run == nil {
+		run = s.execSecretHelper
+	}
+	secret, err := run(in.Mode, s.config().FnOS.ClientID)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, adminErrorResponse{Error: "上游密钥操作失败: " + err.Error()})
+		return
+	}
+	current, err := cloneConfig(s.config())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, adminErrorResponse{Error: "读取当前配置失败"})
+		return
+	}
+	current.FnOS.ClientSecret = secret
+	if err := current.validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, adminErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := SaveConfigAtomic(s.configPath, current); err != nil {
+		writeJSON(w, http.StatusInternalServerError, adminErrorResponse{Error: "保存配置失败: " + err.Error()})
+		return
+	}
+	s.applyConfig(current)
+	msg := "上游密钥已与飞牛数据库同步并保存"
+	if in.Mode == "rotate" {
+		msg = "上游密钥已轮换并保存,旧密钥即刻失效"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg})
+}
+
+// execSecretHelper 经 sudo 调用固定路径的 root 助手脚本;sudoers 规则由安装脚本写入。
+func (s *Server) execSecretHelper(mode, clientID string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sudo", "-n", s.secretHelper, mode, clientID)
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		return "", fmt.Errorf("%s", detail)
+	}
+	secret := strings.TrimSpace(stdout.String())
+	if len(secret) < 16 || len(secret) > 128 || strings.ContainsAny(secret, " \t\r\n\"'") {
+		return "", fmt.Errorf("助手返回的 secret 格式异常")
+	}
+	return secret, nil
 }
 
 func (s *Server) handleAdminTestUpstream(w http.ResponseWriter, r *http.Request) {
