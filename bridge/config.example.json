@@ -12,6 +12,8 @@
   "code_ttl_sec": 120,
   "session_ttl_sec": 43200,
 
+  "signing_alg": "ES256",
+
   "fnos": {
     "base_url": "http://127.0.0.1:5666",
     "public_base_url": "https://<你的飞牛域名>",

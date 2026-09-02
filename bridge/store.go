@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -83,12 +85,12 @@ type Store struct {
 	mu   sync.Mutex
 	path string
 	data *storeData
-	key  *ecdsa.PrivateKey
+	key  crypto.Signer
 	kid  string
 	ttls struct{ code, session, refresh time.Duration }
 }
 
-func NewStore(dataDir string, codeTTL, sessionTTL, refreshTTL time.Duration) (*Store, error) {
+func NewStore(dataDir string, codeTTL, sessionTTL, refreshTTL time.Duration, signingAlg string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("创建数据目录 %s: %w", dataDir, err)
 	}
@@ -105,8 +107,13 @@ func NewStore(dataDir string, codeTTL, sessionTTL, refreshTTL time.Duration) (*S
 	if err := s.load(); err != nil {
 		return nil, err
 	}
+	if s.data.SigningKeyPEM != "" && algOfKey(s.key) != signingAlg {
+		// 配置换了签名算法:旧密钥签发的 token 一律作废,重新生成匹配算法的密钥
+		s.data.SigningKeyPEM = ""
+		s.key = nil
+	}
 	if s.data.SigningKeyPEM == "" {
-		if err := s.generateKey(); err != nil {
+		if err := s.generateKey(signingAlg); err != nil {
 			return nil, err
 		}
 		s.saveLocked()
@@ -142,28 +149,67 @@ func (s *Store) load() error {
 		if block == nil {
 			return fmt.Errorf("解析 %s: signing key PEM 无效", s.path)
 		}
-		key, err := x509.ParseECPrivateKey(block.Bytes)
+		key, err := parsePrivateKey(block.Bytes)
 		if err != nil {
 			return fmt.Errorf("解析 %s: signing key 无效: %w", s.path, err)
 		}
 		s.key = key
-		s.kid = kidOf(&key.PublicKey)
+		s.kid = kidOf(key.Public())
 	}
 	return nil
 }
 
-func (s *Store) generateKey() error {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// parsePrivateKey 依次尝试 PKCS#8、PKCS#1(RSA)、SEC1(EC),兼容新旧格式。
+func parsePrivateKey(der []byte) (crypto.Signer, error) {
+	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+		if signer, ok := key.(crypto.Signer); ok {
+			return signer, nil
+		}
+	}
+	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+		return key, nil
+	}
+	return x509.ParseECPrivateKey(der)
+}
+
+// algOfKey 返回密钥对应的 JWT 签名算法。
+func algOfKey(key crypto.Signer) string {
+	switch key.(type) {
+	case *rsa.PrivateKey:
+		return "RS256"
+	default:
+		return "ES256"
+	}
+}
+
+func (s *Store) generateKey(alg string) error {
+	var key crypto.Signer
+	var pemType string
+	var der []byte
+	var err error
+	if alg == "RS256" {
+		var rsaKey *rsa.PrivateKey
+		rsaKey, err = rsa.GenerateKey(rand.Reader, 2048)
+		if err == nil {
+			key = rsaKey
+			pemType = "RSA PRIVATE KEY"
+			der = x509.MarshalPKCS1PrivateKey(rsaKey)
+		}
+	} else {
+		var ecKey *ecdsa.PrivateKey
+		ecKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err == nil {
+			key = ecKey
+			pemType = "EC PRIVATE KEY"
+			der, err = x509.MarshalECPrivateKey(ecKey)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("生成签名密钥: %w", err)
 	}
-	der, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		return err
-	}
-	s.data.SigningKeyPEM = string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}))
+	s.data.SigningKeyPEM = string(pem.EncodeToMemory(&pem.Block{Type: pemType, Bytes: der}))
 	s.key = key
-	s.kid = kidOf(&key.PublicKey)
+	s.kid = kidOf(key.Public())
 	return nil
 }
 
@@ -199,7 +245,7 @@ func (s *Store) pruneLocked(now time.Time) {
 	}
 }
 
-func (s *Store) SigningKey() (*ecdsa.PrivateKey, string) {
+func (s *Store) SigningKey() (crypto.Signer, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.key, s.kid
@@ -336,8 +382,12 @@ func (s *Store) RotateRefresh(raw string) (string, *RefreshToken) {
 	return newRaw, &fresh
 }
 
-func kidOf(pub *ecdsa.PublicKey) string {
-	sum := sha256.Sum256(append(pub.X.FillBytes(make([]byte, 32)), pub.Y.FillBytes(make([]byte, 32))...))
+func kidOf(pub crypto.PublicKey) string {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		panic(err)
+	}
+	sum := sha256.Sum256(der)
 	return hex.EncodeToString(sum[:8])
 }
 

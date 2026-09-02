@@ -44,7 +44,7 @@ func newAdminTestEnv(t *testing.T) *adminTestEnv {
 	if err := SaveConfigAtomic(configPath, cfg); err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewStore(cfg.DataDir, time.Minute, time.Hour, time.Hour)
+	store, err := NewStore(cfg.DataDir, time.Minute, time.Hour, time.Hour, cfg.SigningAlg)
 	if err != nil {
 		t.Fatal(err)
 	}

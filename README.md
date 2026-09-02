@@ -9,7 +9,7 @@
 ```
  ┌─────────────┐   1. /authorize      ┌──────────────────┐
  │ Jellyfin /   │ ───────────────────► │ fnos-oidc-bridge │  标准 OIDC Provider
- │ Immich / ... │                      │  (fpk 应用)      │  ES256 签名 / PKCE
+ │ Immich / ... │                      │  (fpk 应用)      │  ES256/RS256 签名 · JWT access token · PKCE
  └─────▲───────┘                      └───────┬──────────┘
        │ 4. code 换 token / userinfo          │ 2. 302 跳转
        │                                      ▼
