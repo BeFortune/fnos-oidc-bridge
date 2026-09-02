@@ -7,10 +7,10 @@
 --   token_strategy bigint default 0
 -- 注意:没有 redirect_uri 列 —— 回调地址随 authorize 请求传递,不做库级白名单
 --
--- 用法(二选一):
---   A. 手工执行: sudo -u postgres psql -d trim -f 本文件(先改 client_secret)
---   B. 交给 fpk:把改好的文件放到 $TRIM_PKGETC/register_oauth_app.sql,
---      install_init 会自动执行
+-- 0.5.0 起安装/升级会自动注册并回填 secret,正常无需手工执行本文件。
+-- 仅当自动注册失败(postgres 不可用等)时手工执行:
+--   sudo -u postgres psql -d trim -f 本文件(先改 client_secret)
+-- 或直接在配置页点「从飞牛同步密钥」让系统自动修复。
 --
 -- client_id 沿用官方 10 位大写字母数字风格;client_secret 请换成随机 32 位串
 -- 注意:实测发现 oauth_app_id_seq 可能与 max(id) 不同步(飞牛自带行是显式 id 写入),

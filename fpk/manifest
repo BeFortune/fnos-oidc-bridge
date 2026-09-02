@@ -1,5 +1,5 @@
 appname      = fnosoidcbridge
-version      = 0.4.0
+version      = 0.5.0
 display_name = OIDC SSO Bridge
 desc         = Turn fnOS account login into a standard OIDC identity provider for self-hosted applications.
 platform     = all
@@ -12,4 +12,4 @@ install_type =
 install_dep_apps = 
 service_port = 4223
 checkport    = true
-changelog   = 0.4.0 新增 signing_alg 配置,支持 RS256(RSA-2048) 签名满足只认 RS256 的下游应用;0.3.3 setsid 防断连杀服务;0.3.0 加密配置备份
+changelog   = 0.5.0 安装/升级自动注册并同步飞牛上游凭据,配置页新增一键同步/轮换上游密钥,无需再手工 SQL;0.4.0 RS256 签名支持

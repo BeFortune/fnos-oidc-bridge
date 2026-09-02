@@ -296,3 +296,60 @@ func (cl *ClientConfig) allowsRedirect(uri string) bool {
 	}
 	return false
 }
+
+// setFnosCredential 供安装脚本( root )调用:只改写配置里的 fnos.client_id/client_secret,
+// 用 map 方式编辑以保留 "_注释" 等未知字段,写盘沿用临时文件 + rename。
+func setFnosCredential(path, clientID, secret string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取配置 %s: %w", path, err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return fmt.Errorf("解析配置 %s: %w", path, err)
+	}
+	fnos, _ := doc["fnos"].(map[string]any)
+	if fnos == nil {
+		fnos = map[string]any{}
+	}
+	if clientID != "" {
+		fnos["client_id"] = clientID
+	}
+	fnos["client_secret"] = secret
+	doc["fnos"] = fnos
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	out = append(out, '\n')
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config.json.*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(out); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		if removeErr := os.Remove(path); removeErr != nil {
+			return fmt.Errorf("替换配置: %w", err)
+		}
+		if retryErr := os.Rename(tmpName, path); retryErr != nil {
+			return fmt.Errorf("替换配置: %w", retryErr)
+		}
+	}
+	return os.Chmod(path, 0o600)
+}

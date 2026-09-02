@@ -54,7 +54,7 @@ start() {
   fi
   # 公共 OIDC 监听 4223；管理页面仅监听 target/app.sock，供 fnOS 统一网关访问。
   # setsid 脱离调用方会话,避免手工 SSH 启动后断开终端时服务被会话清理杀掉。
-  setsid nohup runuser -u "$RUN_USER" -- "$BIN" -config "$ETC_DIR/config.json" -data-dir "$VAR_DIR" -admin-socket "$ADMIN_SOCKET" >> "$LOG_FILE" 2>&1 < /dev/null &
+  setsid nohup runuser -u "$RUN_USER" -- "$BIN" -config "$ETC_DIR/config.json" -data-dir "$VAR_DIR" -admin-socket "$ADMIN_SOCKET" -secret-helper /usr/trim/lib/fnosoidcbridge/fnos-upstream-secret.sh >> "$LOG_FILE" 2>&1 < /dev/null &
   echo $! > "$PID_FILE"
   sleep 1
   if is_running; then

@@ -225,3 +225,91 @@ func TestRotateSecretReturnsOnceAndPersists(t *testing.T) {
 		t.Fatal("配置 GET 不得再次返回轮换后的 secret")
 	}
 }
+
+func TestAdminUpstreamSecretSyncRotate(t *testing.T) {
+	e := newAdminTestEnv(t)
+	fakeSecret := "f1e2d3c4b5a697887766554433221100"
+	var gotModes []string
+	e.server.secretHelper = "/usr/trim/lib/fnosoidcbridge/fnos-upstream-secret.sh"
+	e.server.runSecretHelper = func(mode, clientID string) (string, error) {
+		gotModes = append(gotModes, mode)
+		if clientID != "FNOSBRIDGE" {
+			t.Errorf("helper 收到的 client_id=%q,期望 FNOSBRIDGE", clientID)
+		}
+		return fakeSecret, nil
+	}
+
+	// 非管理员拒绝
+	resp, _ := adminRequest(t, http.MethodPost, e.admin.URL+"/admin/api/upstream-secret", map[string]string{"mode": "sync"}, false)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("非管理员应 403,实际 %d", resp.StatusCode)
+	}
+
+	// 非法 mode
+	resp, _ = adminRequest(t, http.MethodPost, e.admin.URL+"/admin/api/upstream-secret", map[string]string{"mode": "rm-rf"}, true)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("非法 mode 应 400,实际 %d", resp.StatusCode)
+	}
+
+	// sync:写配置 + 热应用,响应不回传 secret
+	resp, body := adminRequest(t, http.MethodPost, e.admin.URL+"/admin/api/upstream-secret", map[string]string{"mode": "sync"}, true)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("sync 应 200,实际 %d: %s", resp.StatusCode, body)
+	}
+	if strings.Contains(string(body), fakeSecret) {
+		t.Fatal("响应不应包含 secret 明文")
+	}
+	if e.server.config().FnOS.ClientSecret != fakeSecret {
+		t.Fatal("sync 后运行时配置未更新")
+	}
+	disk, err := LoadConfig(e.configPath)
+	if err != nil || disk.FnOS.ClientSecret != fakeSecret {
+		t.Fatalf("磁盘配置未更新: %v", err)
+	}
+
+	// rotate 同样生效
+	resp, _ = adminRequest(t, http.MethodPost, e.admin.URL+"/admin/api/upstream-secret", map[string]string{"mode": "rotate"}, true)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("rotate 应 200,实际 %d", resp.StatusCode)
+	}
+	if len(gotModes) != 2 || gotModes[0] != "sync" || gotModes[1] != "rotate" {
+		t.Fatalf("helper 调用模式不对: %v", gotModes)
+	}
+
+	// 未配置 helper 时明确报 501
+	e2 := newAdminTestEnv(t)
+	resp, _ = adminRequest(t, http.MethodPost, e2.admin.URL+"/admin/api/upstream-secret", map[string]string{"mode": "sync"}, true)
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Fatalf("无 helper 应 501,实际 %d", resp.StatusCode)
+	}
+}
+
+func TestSetFnosCredentialPreservesFields(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	orig := `{"_注释":"保留我","fnos":{"client_id":"OLDID","base_url":"http://x"},"clients":[{"client_id":"jellyfin","client_secret":"downstream"}]}`
+	if err := os.WriteFile(p, []byte(orig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := setFnosCredential(p, "FNOSOIDCB1", "0123456789abcdef0123456789abcdef"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["_注释"] != "保留我" {
+		t.Fatal("未知字段(注释)丢失")
+	}
+	fnos := doc["fnos"].(map[string]any)
+	if fnos["client_id"] != "FNOSOIDCB1" || fnos["client_secret"] != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("fnos 凭据未写入: %v", fnos)
+	}
+	if fnos["base_url"] != "http://x" {
+		t.Fatal("fnos 其余字段被改动")
+	}
+	clients := doc["clients"].([]any)
+	if clients[0].(map[string]any)["client_secret"] != "downstream" {
+		t.Fatal("下游 client_secret 被误改")
+	}
+}

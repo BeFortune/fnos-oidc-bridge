@@ -33,6 +33,9 @@ main{max-width:1080px;margin:0 auto;padding:28px 22px 56px}h1{font-size:25px;mar
       <div class="field"><label for="fnos_client">飞牛 OAuth Client ID</label><input id="fnos_client" autocomplete="off"></div>
       <div class="field"><label for="fnos_secret">飞牛 Client Secret</label><input id="fnos_secret" type="password" placeholder="留空保持现有 secret"><small id="fnos_secret_state"></small></div>
       <button id="test_upstream" class="secondary" type="button">测试飞牛连接</button>
+      <button id="sync_upstream_secret" class="secondary" type="button">从飞牛同步密钥</button>
+      <button id="rotate_upstream_secret" class="secondary" type="button">轮换上游密钥</button>
+      <div class="notice">同步/轮换直接读写飞牛数据库并自动保存到本配置，无需 SSH；密钥不会回显。轮换后旧密钥即刻失效，正在登录的用户重新登录即可。</div>
     </section>
   </div>
   <section class="card full">
@@ -90,6 +93,9 @@ $('reload').onclick=load;
 async function saveConfig(){error('');message('正在保存…');try{const r=await fetch(api+'config',{method:'PUT',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:JSON.stringify(collect())});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));fill(b);message('已保存并应用',true);return true}catch(e){error(e.message);message('保存失败');return false}}
 $('save').onclick=saveConfig;
 $('test_upstream').onclick=async()=>{if(!await saveConfig())return;message('正在测试飞牛连接…');try{const r=await fetch(api+'test-upstream',{method:'POST',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:'{}'});const b=await r.json();if(!r.ok||!b.ok)throw Error(b.error||('HTTP '+r.status));message('连接成功：app_id='+b.app.app_id+'，应用状态正常',true)}catch(e){error(e.message);message('连接失败')}};
+async function upstreamSecret(mode){if(mode==='rotate'&&!confirm('轮换后旧密钥即刻失效，正在登录的用户需重新登录。确定轮换？'))return;message(mode==='rotate'?'正在轮换上游密钥…':'正在从飞牛数据库同步密钥…');try{const r=await fetch(api+'upstream-secret',{method:'POST',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:JSON.stringify({mode})});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));message(b.message||'完成',true);load()}catch(e){error(e.message)}}
+$('sync_upstream_secret').onclick=()=>upstreamSecret('sync');
+$('rotate_upstream_secret').onclick=()=>upstreamSecret('rotate');
 function generateSecret(){const b=new Uint8Array(32);crypto.getRandomValues(b);return [...b].map(x=>x.toString(16).padStart(2,'0')).join('')}
 function backupPassword(needConfirm){const pw=$('backup_pw').value;const len=[...pw].length;if(len<6||len>20){error('加密密码须为 6-20 位');return null}if(needConfirm&&pw!==$('backup_pw2').value){error('两次输入的密码不一致');return null}return pw}
 async function refreshBackups(){try{const r=await fetch(api+'backups',{cache:'no-store'});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));const sel=$('nas_backup');sel.innerHTML='';if(!b.backups||!b.backups.length){sel.innerHTML='<option value="">（NAS 上还没有备份）</option>';return}for(const f of b.backups){const o=document.createElement('option');o.value=f.name;o.textContent=f.name+'（'+Math.ceil(f.size/1024)+' KB）';sel.appendChild(o)}}catch(e){error(e.message)}}

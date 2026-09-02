@@ -21,6 +21,41 @@ if [ -n "$ETC_DIR" ] && [ -f "$ETC_DIR/config.json" ] && grep -qE '请改成|<�
   echo "[!] 配置仍是模板,请先填入实际域名、上游 secret 和下游 client secret" >&2
 fi
 
+# ---- 上游 oauth_app 凭据:自动注册/同步(数据库为权威源,回填进配置) ----
+# 助手脚本复制到 root 所有的固定路径,并用 sudoers 仅放行该路径给应用用户,
+# 使配置页面的"同步/轮换上游密钥"可以免 SSH 工作。
+HELPER_DIR="/usr/trim/lib/fnosoidcbridge"
+HELPER="$HELPER_DIR/fnos-upstream-secret.sh"
+SUDOERS="/etc/sudoers.d/fnosoidcbridge"
+if [ -n "$APP_DIR" ] && [ -f "$APP_DIR/bin/fnos-upstream-secret.sh" ]; then
+  mkdir -p "$HELPER_DIR"
+  cp "$APP_DIR/bin/fnos-upstream-secret.sh" "$HELPER"
+  chown root:root "$HELPER" 2>/dev/null || true
+  chmod 0755 "$HELPER"
+  printf '%s ALL=(root) NOPASSWD: %s\n' "$RUN_USER" "$HELPER" > "$SUDOERS"
+  chmod 0440 "$SUDOERS"
+  if [ -n "$ETC_DIR" ] && [ -f "$ETC_DIR/config.json" ]; then
+    ARCH=$(uname -m)
+    case "$ARCH" in
+      x86_64)  B="$APP_DIR/bin/fnos-oidc-bridge-linux-amd64" ;;
+      aarch64) B="$APP_DIR/bin/fnos-oidc-bridge-linux-arm64" ;;
+      *) B="" ;;
+    esac
+    # 配置里第一个 client_id 即 fnos 上游的(fnos 段在 clients 之前)
+    CID=$(sed -n 's/.*"client_id"[ ]*:[ ]*"\([A-Za-z0-9]\{4,32\}\)".*/\1/p' "$ETC_DIR/config.json" | head -n1)
+    [ -n "$CID" ] || CID="FNOSOIDCB1"
+    if [ -n "$B" ] && [ -x "$B" ] && SECRET=$("$HELPER" ensure "$CID" 2>/dev/null); then
+      if "$B" -config "$ETC_DIR/config.json" -set-fnos-secret "$SECRET" -set-fnos-client-id "$CID"; then
+        echo "上游 oauth_app 凭据已自动注册/同步: $CID"
+      else
+        echo "[!] 写入配置失败,请手工回填 fnos.client_secret" >&2
+      fi
+    else
+      echo "[!] 自动注册上游 oauth_app 失败(postgres 暂不可用?),装好后可在配置页点「从飞牛同步密钥」重试" >&2
+    fi
+  fi
+fi
+
 if [ -n "$ETC_DIR" ]; then
   chown -R "$RUN_USER:$RUN_USER" "$ETC_DIR" 2>/dev/null || true
   [ -f "$ETC_DIR/config.json" ] && chmod 0600 "$ETC_DIR/config.json" 2>/dev/null || true

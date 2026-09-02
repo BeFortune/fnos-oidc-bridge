@@ -20,6 +20,10 @@ type Server struct {
 	fnos       *FnOSClient
 	key        crypto.Signer
 	kid        string
+
+	secretHelper string // 上游密钥管理助手脚本路径(空 = 未启用一键同步/轮换)
+	// runSecretHelper 调助手脚本,测试可替换;实现见 admin.go。
+	runSecretHelper func(mode, clientID string) (string, error)
 }
 
 func (s *Server) config() *Config {
