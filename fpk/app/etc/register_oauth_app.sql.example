@@ -1,0 +1,26 @@
+-- ============================================================================
+-- 在 trim 库 oauth_app 表注册桥接应用(recon2 已确认真实表结构,无待定项)
+--
+-- 表结构(trim 库, public schema):
+--   id(bigserial) created_at updated_at client_id varchar(255)
+--   client_secret varchar(255) status bigint client_name varchar(255)
+--   token_strategy bigint default 0
+-- 注意:没有 redirect_uri 列 —— 回调地址随 authorize 请求传递,不做库级白名单
+--
+-- 用法(二选一):
+--   A. 手工执行: sudo -u postgres psql -d trim -f 本文件(先改 client_secret)
+--   B. 交给 fpk:把改好的文件放到 $TRIM_PKGETC/register_oauth_app.sql,
+--      install_init 会自动执行
+--
+-- client_id 沿用官方 10 位大写字母数字风格;client_secret 请换成随机 32 位串
+-- 注意:实测发现 oauth_app_id_seq 可能与 max(id) 不同步(飞牛自带行是显式 id 写入),
+--       先 setval 对齐序列,否则 INSERT 会报主键冲突
+-- ============================================================================
+SELECT setval('oauth_app_id_seq', (SELECT max(id) FROM oauth_app));
+
+INSERT INTO oauth_app (created_at, updated_at, client_id, client_secret, status, client_name, token_strategy)
+SELECT now(), now(), 'FNOSOIDCB1', 'REPLACE_WITH_RANDOM_32CHAR_SECRET', 1, 'fnos-oidc-bridge', 0
+WHERE NOT EXISTS (SELECT 1 FROM oauth_app WHERE client_id = 'FNOSOIDCB1');
+
+-- 自检:应能看到 FNOSOIDCB1 一行
+SELECT id, client_id, client_name, status, token_strategy FROM oauth_app ORDER BY id;

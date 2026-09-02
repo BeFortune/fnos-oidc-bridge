@@ -1,0 +1,102 @@
+#!/bin/sh
+# fnos-oidc-bridge 服务控制脚本: cmd/main start|stop|status
+# 退出码约定: 0=成功 1=失败 3=未运行
+set -u
+
+APP_DIR="${TRIM_APPDEST:-/var/apps/fnosoidcbridge/target}"
+ETC_DIR="${TRIM_PKGETC:-/var/apps/fnosoidcbridge/etc}"
+VAR_DIR="${TRIM_PKGVAR:-/var/apps/fnosoidcbridge/var}"
+RUN_USER="${TRIM_RUN_USERNAME:-fnosoidcbridge}"
+ADMIN_SOCKET="$APP_DIR/app.sock"
+
+PID_FILE="$VAR_DIR/bridge.pid"
+LOG_FILE="$VAR_DIR/bridge.log"
+
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64)  BIN="$APP_DIR/bin/fnos-oidc-bridge-linux-amd64" ;;
+  aarch64) BIN="$APP_DIR/bin/fnos-oidc-bridge-linux-arm64" ;;
+  *) echo "不支持的架构: $ARCH" >&2; exit 1 ;;
+esac
+
+if [ ! -x "$BIN" ]; then
+  echo "二进制不可执行或不存在: $BIN" >&2
+  exit 1
+fi
+
+is_running() {
+  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+start() {
+  if is_running; then
+    echo "已在运行 (pid $(cat "$PID_FILE"))"
+    exit 0
+  fi
+  if [ ! -f "$ETC_DIR/config.json" ]; then
+    echo "缺少配置 $ETC_DIR/config.json — 安装时已生成模板,请先按 docs/recon.md 回填再启动" >&2
+    exit 1
+  fi
+  mkdir -p "$VAR_DIR"
+  rm -f "$ADMIN_SOCKET"
+  # 服务以应用用户降权运行,但安装/手工编辑后配置文件可能属 root。
+  # 启动脚本本身是 root,在降权前修正所有权,避免 permission denied。
+  chown "$RUN_USER:$RUN_USER" "$ETC_DIR/config.json" 2>/dev/null || true
+  chmod 600 "$ETC_DIR/config.json" 2>/dev/null || true
+  chown -R "$RUN_USER:$RUN_USER" "$VAR_DIR" 2>/dev/null || true
+  [ -f "$VAR_DIR/state.json" ] && { chown "$RUN_USER:$RUN_USER" "$VAR_DIR/state.json"; chmod 600 "$VAR_DIR/state.json"; } 2>/dev/null || true
+  # nginx 路由若被系统更新清除,启动时自愈重建。
+  NGINX_CONF_D="/usr/trim/nginx/conf/conf.d"
+  if [ -f "$APP_DIR/nginx/fnosoidcbridge.conf" ] && [ -d "$NGINX_CONF_D" ] && [ ! -f "$NGINX_CONF_D/fnosoidcbridge.conf" ]; then
+    cp "$APP_DIR/nginx/fnosoidcbridge.conf" "$NGINX_CONF_D/fnosoidcbridge.conf"
+    chmod 0644 "$NGINX_CONF_D/fnosoidcbridge.conf"
+    systemctl reload trim_nginx 2>/dev/null || { NGINX_PID=$(cat /run/nginx.pid 2>/dev/null || true); [ -n "$NGINX_PID" ] && kill -HUP "$NGINX_PID" 2>/dev/null || true; }
+  fi
+  # 公共 OIDC 监听 4223；管理页面仅监听 target/app.sock，供 fnOS 统一网关访问。
+  # setsid 脱离调用方会话,避免手工 SSH 启动后断开终端时服务被会话清理杀掉。
+  setsid nohup runuser -u "$RUN_USER" -- "$BIN" -config "$ETC_DIR/config.json" -data-dir "$VAR_DIR" -admin-socket "$ADMIN_SOCKET" >> "$LOG_FILE" 2>&1 < /dev/null &
+  echo $! > "$PID_FILE"
+  sleep 1
+  if is_running; then
+    echo "启动成功 (pid $(cat "$PID_FILE")),日志: $LOG_FILE"
+    exit 0
+  fi
+  echo "启动失败,最近日志:" >&2
+  tail -20 "$LOG_FILE" >&2
+  rm -f "$PID_FILE"
+  exit 1
+}
+
+stop() {
+  if ! is_running; then
+    rm -f "$PID_FILE"
+    echo "未在运行"
+    exit 0
+  fi
+  PID=$(cat "$PID_FILE")
+  kill "$PID" 2>/dev/null
+  i=0
+  while kill -0 "$PID" 2>/dev/null && [ $i -lt 10 ]; do
+    sleep 1; i=$((i + 1))
+  done
+  kill -0 "$PID" 2>/dev/null && kill -9 "$PID" 2>/dev/null
+  rm -f "$PID_FILE" "$ADMIN_SOCKET"
+  echo "已停止"
+  exit 0
+}
+
+status() {
+  if is_running; then
+    echo "运行中 (pid $(cat "$PID_FILE"))"
+    exit 0
+  fi
+  echo "未运行"
+  exit 3
+}
+
+case "${1:-}" in
+  start)  start ;;
+  stop)   stop ;;
+  status) status ;;
+  *) echo "用法: $0 {start|stop|status}" >&2; exit 1 ;;
+esac

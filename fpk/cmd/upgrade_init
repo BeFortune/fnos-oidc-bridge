@@ -1,0 +1,5 @@
+#!/bin/sh
+# upgrade_init (root): 升级前准备 — 与 install_init 相同(不覆盖用户配置)
+set -u
+"$TRIM_APPDEST/cmd/install_init" 2>/dev/null || /var/apps/fnosoidcbridge/cmd/install_init
+exit 0

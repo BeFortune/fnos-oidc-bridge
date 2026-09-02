@@ -1,0 +1,20 @@
+# 敏感产物不上库
+*.fpk
+bridge/data/
+bridge/config.json
+recon/fnos-recon-*.txt
+fpk/app/bin/
+*.log
+
+# 私有部署与本地凭据
+deploy/
+client-secrets.txt
+config.local.json
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编译产物
+bridge/fnos-oidc-bridge.exe
+*.exe

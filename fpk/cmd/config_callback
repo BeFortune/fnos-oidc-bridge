@@ -1,0 +1,3 @@
+#!/bin/sh
+# config_callback: 无用户配置界面,预留
+exit 0

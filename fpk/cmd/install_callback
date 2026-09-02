@@ -1,0 +1,53 @@
+#!/bin/sh
+# install_callback (root): 安装后文件已展开,执行权限、目录初始化和配置模板复制。
+set -u
+APP_DIR="${TRIM_APPDEST:-}"
+ETC_DIR="${TRIM_PKGETC:-}"
+VAR_DIR="${TRIM_PKGVAR:-}"
+RUN_USER="${TRIM_RUN_USERNAME:-fnosoidcbridge}"
+
+[ -n "$APP_DIR" ] && chmod 0755 "$APP_DIR"/bin/fnos-oidc-bridge-linux-* 2>/dev/null || true
+[ -n "$APP_DIR" ] && chmod 0755 "$APP_DIR"/cmd/* 2>/dev/null || true
+[ -n "$ETC_DIR" ] && mkdir -p "$ETC_DIR"
+[ -n "$VAR_DIR" ] && mkdir -p "$VAR_DIR"
+
+# 安装后 target 已可见,此时才复制配置模板;绝不覆盖用户已有配置。
+if [ -n "$ETC_DIR" ] && [ ! -f "$ETC_DIR/config.json" ] && [ -n "$APP_DIR" ] && [ -f "$APP_DIR/etc/config.example.json" ]; then
+  cp "$APP_DIR/etc/config.example.json" "$ETC_DIR/config.json"
+  echo "已生成配置模板: $ETC_DIR/config.json"
+fi
+
+if [ -n "$ETC_DIR" ] && [ -f "$ETC_DIR/config.json" ] && grep -qE '请改成|<你的|安全渠道|<随机|REPLACE_WITH' "$ETC_DIR/config.json" 2>/dev/null; then
+  echo "[!] 配置仍是模板,请先填入实际域名、上游 secret 和下游 client secret" >&2
+fi
+
+if [ -n "$ETC_DIR" ]; then
+  chown -R "$RUN_USER:$RUN_USER" "$ETC_DIR" 2>/dev/null || true
+  [ -f "$ETC_DIR/config.json" ] && chmod 0600 "$ETC_DIR/config.json" 2>/dev/null || true
+fi
+if [ -n "$VAR_DIR" ]; then chown -R "$RUN_USER:$RUN_USER" "$VAR_DIR" 2>/dev/null || true; fi
+if [ -n "$APP_DIR" ]; then chown "$RUN_USER:$RUN_USER" "$APP_DIR" 2>/dev/null || true; fi
+
+# 向 fnOS 主 nginx 注册 /oidc 路由,使 Issuer 可复用系统 5666/5667 端口对外。
+# 与 baidu_netdisk/docker_web 等第三方应用相同的挂载方式。
+NGINX_CONF_D="/usr/trim/nginx/conf/conf.d"
+reload_trim_nginx() {
+  # trim nginx 的 pid 文件经常与二进制默认路径不一致,-s reload 会静默失败;
+  # 优先走 systemd,其次直接 HUP 主进程。
+  if systemctl reload trim_nginx 2>/dev/null; then return 0; fi
+  local pid
+  pid=$(cat /run/nginx.pid 2>/dev/null || true)
+  [ -n "$pid" ] && kill -HUP "$pid" 2>/dev/null && return 0
+  return 1
+}
+if [ -n "$APP_DIR" ] && [ -f "$APP_DIR/nginx/fnosoidcbridge.conf" ] && [ -d "$NGINX_CONF_D" ]; then
+  cp "$APP_DIR/nginx/fnosoidcbridge.conf" "$NGINX_CONF_D/fnosoidcbridge.conf"
+  chmod 0644 "$NGINX_CONF_D/fnosoidcbridge.conf"
+  if /usr/trim/nginx/sbin/nginx -t >/dev/null 2>&1; then
+    reload_trim_nginx || echo "[!] nginx 重载失败,请手工执行: systemctl reload trim_nginx" >&2
+    echo "已注册 nginx 路由: /oidc -> 127.0.0.1:4223"
+  else
+    echo "[!] nginx 配置测试失败,已保留文件,请手工检查 $NGINX_CONF_D/fnosoidcbridge.conf" >&2
+  fi
+fi
+exit 0

@@ -1,0 +1,5 @@
+#!/bin/sh
+# upgrade_callback (root): 与 install_callback 相同
+set -u
+"$TRIM_APPDEST/cmd/install_callback" 2>/dev/null || /var/apps/fnosoidcbridge/cmd/install_callback
+exit 0

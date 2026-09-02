@@ -1,0 +1,18 @@
+# fnOS 包内的 shell 脚本必须以 LF 结尾,CRLF 会导致 NAS 上执行失败
+*.sh        text eol=lf
+fpk/cmd/*   text eol=lf
+fpk/config/* text eol=lf
+fpk/manifest text eol=lf
+fpk/app/ui/config text eol=lf
+fpk/app/nginx/*.conf text eol=lf
+
+*.go   text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.py   text eol=lf
+
+*.png  binary
+*.PNG  binary
+*.fpk  binary
+*.exe  binary
