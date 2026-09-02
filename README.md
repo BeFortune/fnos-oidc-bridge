@@ -69,6 +69,8 @@ $TRIM_APPDEST/app.sock
 2. **配置桥接**:升级到 0.2.0 后优先从 fnOS 桌面打开“OIDC 统一登录”配置中心；首次启动前若模板仍含占位值，可复制 `fpk/app/etc/config.example.json` 到 `$TRIM_PKGETC/config.json` 填入实际值，之后均可在网页维护。
 3. **构建**:本机执行 `scripts/build-fpk.sh`；官方 `fnpack` 已验证当前目录可生成 `fpk/fnosoidcbridge.fpk`。
 4. **安装**:`appcenter-cli install-fpk fnosoidcbridge.fpk`。安装后把最终配置复制到应用配置目录(通常是 `/var/apps/fnosoidcbridge/etc/config.json` 对应的 `@appconf` 路径)，再启动应用。
+
+> ⚠️ **网页安装提示 Failed to fetch 可以无视**:通过飞牛网页界面上传/更新 FPK 时,进度走完可能弹出「Failed to fetch」红色错误,但刷新应用中心会发现其实已安装成功。该问题来源暂未定位(疑似网页请求被中转设备拦截,SSH 安装无任何报错),遇到时刷新确认即可,不放心就用 SSH 的 `appcenter-cli install-fpk`。
 5. **反向代理**:完整手册见 [docs/reverse-proxy.md](docs/reverse-proxy.md)（通用 nginx / 雷池 WAF / 1Panel、局域网+公网双入口、排障速查）。要点:Issuer 必须等于对外完整地址、反代保留 `/oidc` 前缀、OIDC 路径不能套任何前置认证。监听地址（端口）0.6.0 起可在配置页面自定义，保存后重启应用生效。
 6. **接入下游**:照 `docs/integrate.md` 给应用填 discovery 地址 `https://<你的统一域名>/oidc/.well-known/openid-configuration`。浏览器 authorize 时，桥接会跳转到 `fnos.public_base_url + /signin`，用户使用飞牛原生账号登录。
 
