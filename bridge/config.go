@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -161,6 +162,9 @@ func (c *Config) validate() error {
 	}
 	if c.PublicPrefix == "" || c.PublicPrefix == "/" {
 		return fmt.Errorf("public_prefix 不能为根路径")
+	}
+	if _, port, err := net.SplitHostPort(c.Listen); err != nil || port == "" {
+		return fmt.Errorf("listen 必须是 主机:端口 格式,如 0.0.0.0:4223 或 127.0.0.1:8321,当前为 %q", c.Listen)
 	}
 	if c.FnOS.BaseURL == "" {
 		return fmt.Errorf("fnos.base_url 不能为空")

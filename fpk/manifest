@@ -1,5 +1,5 @@
 appname      = fnosoidcbridge
-version      = 0.5.0
+version      = 0.6.0
 display_name = OIDC SSO Bridge
 desc         = Turn fnOS account login into a standard OIDC identity provider for self-hosted applications.
 platform     = all
@@ -12,4 +12,4 @@ install_type =
 install_dep_apps = 
 service_port = 4223
 checkport    = true
-changelog   = 0.5.0 安装/升级自动注册并同步飞牛上游凭据,配置页新增一键同步/轮换上游密钥,无需再手工 SQL;0.4.0 RS256 签名支持
+changelog   = 0.6.0 配置备份只保留电脑导入导出(移除 NAS 侧留存),监听端口可在配置页自定义便于反代,新增反代手册;0.5.0 上游凭据自动注册/GUI 轮换
