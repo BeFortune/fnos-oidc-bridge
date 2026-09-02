@@ -1,0 +1,6 @@
+#!/bin/sh
+# install_init (root): 安装前钩子。
+# 应用文件此时可能尚未展开到 $TRIM_APPDEST，因此不要在这里读取 target 内模板。
+set -u
+exit 0
+

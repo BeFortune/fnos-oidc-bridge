@@ -1,0 +1,17 @@
+{
+  ".url": {
+    "fnosoidcbridge.admin": {
+      "title": "OIDC 统一登录",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/fnosoidcbridge",
+      "gatewaySocket": "app.sock",
+      "url": "/app/fnosoidcbridge/admin",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "readonly"
+      }
+    }
+  }
+}

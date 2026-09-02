@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OIDC 统一登录配置</title>
+<style>
+:root{color-scheme:light;--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#667085;--line:#dfe4ec;--primary:#2563eb;--danger:#c62828;--ok:#16803c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:28px 22px 56px}h1{font-size:25px;margin:0 0 5px}h2{font-size:17px;margin:0 0 16px}.sub{color:var(--muted);margin:0 0 24px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:19px;box-shadow:0 1px 2px #1822300a;margin-bottom:16px}.full{grid-column:1/-1}.field{display:flex;flex-direction:column;gap:6px;margin-bottom:13px}.field label{font-weight:600}.field small{color:var(--muted)}input,textarea,select{font:inherit;border:1px solid #c9d1dd;border-radius:7px;padding:9px 10px;background:#fff;color:var(--text);width:100%}textarea{min-height:78px;resize:vertical}input:focus,textarea:focus{outline:2px solid #2563eb33;border-color:var(--primary)}button{border:0;border-radius:7px;padding:9px 13px;font:inherit;cursor:pointer;background:var(--primary);color:#fff;font-weight:600}button.secondary{background:#e8eefb;color:#1d4ed8}button.ghost{background:transparent;color:#475467;border:1px solid var(--line)}button.danger{background:#fff0f0;color:var(--danger);border:1px solid #f5c2c2}button:disabled{opacity:.55;cursor:not-allowed}.actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.status{margin-left:auto;color:var(--muted)}.status.ok{color:var(--ok)}.status.err{color:var(--danger)}.endpoint{display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;margin:8px 0}.endpoint b{font-size:12px;color:var(--muted)}.endpoint code{display:block;white-space:nowrap;overflow:auto;background:#f1f4f8;border-radius:6px;padding:7px 8px;color:#344054}.client{border:1px solid var(--line);border-radius:9px;padding:14px;margin:12px 0;background:#fcfdff}.client-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}.client-head strong{font-size:15px}.client-head .spacer{flex:1}.uri-row{display:flex;gap:7px;margin:7px 0}.uri-row input{flex:1}.secret-state{font-size:12px;color:var(--muted);padding:8px 0}.secret-once{background:#fff9e8;border:1px solid #f1d38a;border-radius:7px;padding:10px;margin:8px 0;word-break:break-all}.notice{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:11px 13px;color:#1e40af}.error{background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:11px 13px;color:#9f1239;margin-bottom:15px;white-space:pre-wrap}.hidden{display:none}@media(max-width:760px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.endpoint{grid-template-columns:1fr auto}.endpoint code{grid-column:1/-1}.status{margin-left:0;width:100%}}
+.toast-wrap{position:fixed;right:18px;top:18px;z-index:999;display:flex;flex-direction:column;gap:10px;max-width:380px}.toast{background:#fff;border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:9px;padding:12px 12px 12px 14px;box-shadow:0 6px 24px #18223026;display:flex;gap:10px;align-items:flex-start;word-break:break-all;font-size:13px}.toast.ok{border-left-color:var(--ok)}.toast.err{border-left-color:var(--danger)}.toast span{flex:1;padding-top:1px}.toast button{flex:none;background:transparent;border:1px solid var(--line);color:#475467;border-radius:6px;padding:2px 9px;font-size:12px;font-weight:400;cursor:pointer}
+</style>
+</head>
+<body>
+<main>
+  <h1>OIDC 统一登录配置</h1>
+  <p class="sub">通过飞牛账号统一登录 Jellyfin、Immich 等自托管应用。此页面仅管理员可访问。</p>
+  <div id="toasts" class="toast-wrap"></div>
+  <section class="card">
+    <h2>服务端点</h2>
+    <div id="endpoints" class="notice">正在读取配置…</div>
+  </section>
+  <div class="grid">
+    <section class="card">
+      <h2>OIDC 公共入口</h2>
+      <div class="field"><label for="base_url">Issuer / Base URL</label><input id="base_url" autocomplete="off"><small>需要与反向代理对外地址完全一致，例如 https://nas.example.com/oidc</small></div>
+      <div class="field"><label for="public_prefix">公共路径前缀</label><input id="public_prefix" autocomplete="off"><small>通常为 /oidc；修改后需要同步反向代理并重启服务。</small></div>
+    </section>
+    <section class="card">
+      <h2>飞牛上游账号</h2>
+      <div class="field"><label for="fnos_base">内部地址</label><input id="fnos_base" autocomplete="off"></div>
+      <div class="field"><label for="fnos_public">浏览器地址</label><input id="fnos_public" autocomplete="off"></div>
+      <div class="field"><label for="fnos_client">飞牛 OAuth Client ID</label><input id="fnos_client" autocomplete="off"></div>
+      <div class="field"><label for="fnos_secret">飞牛 Client Secret</label><input id="fnos_secret" type="password" placeholder="留空保持现有 secret"><small id="fnos_secret_state"></small></div>
+      <button id="test_upstream" class="secondary" type="button">测试飞牛连接</button>
+    </section>
+  </div>
+  <section class="card full">
+    <div class="client-head"><h2 style="margin:0">下游 OIDC 应用</h2><button id="add_client" class="secondary" type="button">+ 添加应用</button></div>
+    <div class="notice">已有 secret 不会回显。点击“轮换 secret”后只显示一次新 secret；下游应用同步更新前不要关闭提示。</div>
+    <div id="clients"></div>
+  </section>
+  <div class="grid">
+    <section class="card"><h2>登录白名单</h2><div class="field"><label for="allow_users">允许登录的飞牛用户名</label><textarea id="allow_users" placeholder="每行一个；留空表示允许所有账号"></textarea></div></section>
+    <section class="card"><h2>管理员白名单</h2><div class="field"><label for="admin_users">映射为 admins 组的用户名</label><textarea id="admin_users" placeholder="每行一个"></textarea></div></section>
+  </div>
+  <section class="card full">
+    <h2>配置备份（加密）</h2>
+    <div class="notice">备份包含全部 secret，使用密码加密（Argon2id + AES-256-GCM）。密码 6-20 位，只用于本次加解密，不会被保存；忘记密码将无法恢复备份。建议导出后立即下载存档到电脑。NAS 上 exports/ 目录中的历史备份（卸载后默认保留）仍可从下方导入。</div>
+    <div class="grid">
+      <div>
+        <div class="field"><label for="backup_pw">加密密码</label><input id="backup_pw" type="password" autocomplete="new-password" placeholder="6-20 位"></div>
+        <div class="field"><label for="backup_pw2">确认密码（导出时填写）</label><input id="backup_pw2" type="password" autocomplete="new-password"></div>
+        <div class="actions">
+          <button id="export_pc" class="secondary" type="button">导出到电脑</button>
+        </div>
+      </div>
+      <div>
+        <div class="field"><label for="import_file">从电脑导入</label><input id="import_file" type="file" accept=".json,.enc.json"></div>
+        <div class="field"><label for="nas_backup">从 NAS 导入</label><select id="nas_backup"></select></div>
+        <div class="actions">
+          <button id="import_pc" class="secondary" type="button">导入所选文件</button>
+          <button id="refresh_backups" class="ghost" type="button">刷新列表</button>
+          <button id="import_nas" class="secondary" type="button">从 NAS 导入</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="card"><div class="actions"><button id="save" type="button">保存并应用</button><button id="reload" class="ghost" type="button">重新读取</button></div></section>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);let state=null;
+const api=location.pathname.replace(/\/$/,'')+'/api/';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(text,kind){const box=document.createElement('div');box.className='toast '+kind;const span=document.createElement('span');span.textContent=text;const btn=document.createElement('button');btn.type='button';btn.textContent='关闭';btn.onclick=()=>box.remove();box.append(span,btn);$('toasts').appendChild(box)}
+function message(text,ok=false){toast(text,ok?'ok':'info')}
+function error(text){if(text)toast(text,'err')}
+function lines(text){return String(text||'').split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean)}
+function endpointRow(label,value){return '<div class="endpoint"><b>'+label+'</b><code>'+esc(value)+'</code><button class="ghost copy" type="button" data-copy="'+encodeURIComponent(value)+'">复制</button></div>'}
+function renderEndpoints(e){$('endpoints').innerHTML=[endpointRow('Issuer',e.issuer),endpointRow('Discovery',e.discovery),endpointRow('Authorize',e.authorization),endpointRow('Token',e.token),endpointRow('UserInfo',e.userinfo),endpointRow('JWKS',e.jwks)].join('')}
+function renderClients(){const root=$('clients');root.innerHTML='';(state.clients||[]).forEach((c,i)=>{const pending=c.client_secret||'';const secretLabel=pending?'待保存的新 secret':(c.has_secret?'已配置（不会显示）':'未配置（public client 必须使用 PKCE）');const box=document.createElement('div');box.className='client';box.dataset.index=i;box.innerHTML='<div class="client-head"><strong>应用 '+(i+1)+'</strong><span class="spacer"></span><button class="danger remove" type="button">删除</button></div><div class="grid"><div class="field"><label>Client ID</label><input class="cid" value="'+esc(c.client_id)+'" autocomplete="off"></div><div class="field"><label>名称</label><input class="cname" value="'+esc(c.name)+'" autocomplete="off"></div></div><div class="field"><label>Redirect URIs</label><div class="uris"></div><button class="ghost add-uri" type="button">+ 添加回调地址</button></div><div class="field"><label>Client Secret</label><input class="csecret" type="password" value="'+esc(pending)+'" placeholder="留空保持现有；新应用留空表示 public client"><div class="secret-state">Secret 状态：'+secretLabel+'</div><div class="actions"><button class="secondary generate" type="button">生成新 secret</button>'+(c.has_secret?'<button class="secondary rotate" type="button">立即轮换已保存 secret</button>':'')+'</div></div>';const uris=box.querySelector('.uris');(c.redirect_uris||[]).forEach(u=>addURI(uris,u));root.appendChild(box)})}
+function addURI(root,value=''){const row=document.createElement('div');row.className='uri-row';row.innerHTML='<input class="uri" value="'+esc(value)+'" autocomplete="off"><button class="danger del-uri" type="button">删除</button>';root.appendChild(row)}
+function collect(){const clients=[...document.querySelectorAll('.client')].map(box=>({client_id:box.querySelector('.cid').value.trim(),name:box.querySelector('.cname').value.trim(),client_secret:box.querySelector('.csecret').value,redirect_uris:[...box.querySelectorAll('.uri')].map(x=>x.value.trim()).filter(Boolean)}));return{base_url:$('base_url').value.trim(),public_prefix:$('public_prefix').value.trim(),fnos:{base_url:$('fnos_base').value.trim(),public_base_url:$('fnos_public').value.trim(),client_id:$('fnos_client').value.trim(),client_secret:$('fnos_secret').value},clients,allow_users:lines($('allow_users').value),admin_users:lines($('admin_users').value)}}
+function fill(c){state=c;$('base_url').value=c.base_url||'';$('public_prefix').value=c.public_prefix||'';$('fnos_base').value=c.fnos.base_url||'';$('fnos_public').value=c.fnos.public_base_url||'';$('fnos_client').value=c.fnos.client_id||'';$('fnos_secret').value='';$('fnos_secret_state').textContent=c.fnos.has_client_secret?'已配置；留空表示保持不变':'未配置';$('allow_users').value=(c.allow_users||[]).join('\n');$('admin_users').value=(c.admin_users||[]).join('\n');renderEndpoints(c.endpoints);renderClients()}
+async function load(){error('');message('正在读取…');try{const r=await fetch(api+'config',{cache:'no-store'});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));fill(b);message('已读取',true)}catch(e){error(e.message);message('读取失败')}}
+$('clients').addEventListener('click',e=>{const box=e.target.closest('.client');if(!box)return;if(e.target.classList.contains('remove')){box.remove();return}if(e.target.classList.contains('add-uri')){addURI(box.querySelector('.uris'));return}if(e.target.classList.contains('del-uri')){e.target.closest('.uri-row').remove();return}if(e.target.classList.contains('generate')){const secret=generateSecret();box.querySelector('.csecret').value=secret;const el=document.createElement('div');el.className='secret-once';el.textContent='新 secret（保存后生效，请立即复制）：'+secret;box.appendChild(el);return}if(e.target.classList.contains('rotate'))rotate(box.querySelector('.cid').value.trim())});
+$('add_client').onclick=()=>{const previous=new Map((state?.clients||[]).map(c=>[c.client_id,!!c.has_secret]));const current=collect().clients;state=state||{};state.clients=current.map(c=>({...c,has_secret:previous.get(c.client_id)||false}));state.clients.push({client_id:'',name:'',client_secret:'',redirect_uris:[],has_secret:false});renderClients()};
+$('reload').onclick=load;
+async function saveConfig(){error('');message('正在保存…');try{const r=await fetch(api+'config',{method:'PUT',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:JSON.stringify(collect())});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));fill(b);message('已保存并应用',true);return true}catch(e){error(e.message);message('保存失败');return false}}
+$('save').onclick=saveConfig;
+$('test_upstream').onclick=async()=>{if(!await saveConfig())return;message('正在测试飞牛连接…');try{const r=await fetch(api+'test-upstream',{method:'POST',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:'{}'});const b=await r.json();if(!r.ok||!b.ok)throw Error(b.error||('HTTP '+r.status));message('连接成功：app_id='+b.app.app_id+'，应用状态正常',true)}catch(e){error(e.message);message('连接失败')}};
+function generateSecret(){const b=new Uint8Array(32);crypto.getRandomValues(b);return [...b].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function backupPassword(needConfirm){const pw=$('backup_pw').value;const len=[...pw].length;if(len<6||len>20){error('加密密码须为 6-20 位');return null}if(needConfirm&&pw!==$('backup_pw2').value){error('两次输入的密码不一致');return null}return pw}
+async function refreshBackups(){try{const r=await fetch(api+'backups',{cache:'no-store'});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));const sel=$('nas_backup');sel.innerHTML='';if(!b.backups||!b.backups.length){sel.innerHTML='<option value="">（NAS 上还没有备份）</option>';return}for(const f of b.backups){const o=document.createElement('option');o.value=f.name;o.textContent=f.name+'（'+Math.ceil(f.size/1024)+' KB）';sel.appendChild(o)}}catch(e){error(e.message)}}
+async function doExport(target){const pw=backupPassword(true);if(pw===null)return;error('');message('正在导出…');try{const r=await fetch(api+'export',{method:'POST',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:JSON.stringify({password:pw,target})});if(!r.ok){const b=await r.json().catch(()=>({}));throw Error(b.error||('HTTP '+r.status))}if(target==='nas'){const b=await r.json();message('已导出到 NAS：'+b.path,true);refreshBackups();return}const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(r.headers.get('Content-Disposition')||'').match(/filename="?([^";]+)/)?.[1]||'fnosoidcbridge-backup.enc.json';a.click();URL.revokeObjectURL(a.href);message('已下载加密备份',true)}catch(e){error(e.message);message('导出失败')}}
+$('export_pc').onclick=()=>doExport('download');
+$('refresh_backups').onclick=refreshBackups;
+$('import_pc').onclick=async()=>{const pw=backupPassword(false);if(pw===null)return;const f=$('import_file').files[0];if(!f){error('请先选择备份文件');return}if(f.size>2*1024*1024){error('备份文件过大');return}if(!confirm('导入会覆盖当前网页可管理的全部配置（含下游应用与 secret），确定继续？'))return;error('');message('正在导入…');try{const data=await f.text();const r=await fetch(api+'import',{method:'POST',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:JSON.stringify({password:pw,target:'pc',data})});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));fill(b);message('导入成功，配置已应用',true)}catch(e){error(e.message);message('导入失败')}};
+$('import_nas').onclick=async()=>{const pw=backupPassword(false);if(pw===null)return;const name=$('nas_backup').value;if(!name){error('请先选择 NAS 上的备份');return}if(!confirm('导入会覆盖当前网页可管理的全部配置（含下游应用与 secret），确定继续？'))return;error('');message('正在导入…');try{const r=await fetch(api+'import',{method:'POST',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:JSON.stringify({password:pw,target:'nas',name})});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));fill(b);message('导入成功，配置已应用',true)}catch(e){error(e.message);message('导入失败')}};
+async function rotate(id){if(!id){error('请先填写 Client ID');return}if(!confirm('确定轮换 '+id+' 的 secret？旧 secret 会立即失效。'))return;try{const r=await fetch(api+'rotate-secret',{method:'POST',headers:{'Content-Type':'application/json','X-OIDC-Admin':'1'},body:JSON.stringify({client_id:id})});const b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));const el=document.createElement('div');el.className='secret-once';el.textContent='新 secret（只显示这一次）：'+b.client_secret;const box=[...document.querySelectorAll('.client')].find(x=>x.querySelector('.cid').value.trim()===id);box?.appendChild(el)}catch(e){error(e.message)}}
+document.addEventListener('click',async e=>{if(!e.target.classList.contains('copy'))return;try{await navigator.clipboard.writeText(decodeURIComponent(e.target.dataset.copy));e.target.textContent='已复制';setTimeout(()=>e.target.textContent='复制',1200)}catch(_){message('浏览器禁止访问剪贴板，请手工复制',false)}});
+load();
+refreshBackups();
+</script>
+</body>
+</html>

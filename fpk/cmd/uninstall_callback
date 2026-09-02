@@ -1,0 +1,11 @@
+#!/bin/sh
+# uninstall_callback: 移除 nginx 路由;默认保留 $TRIM_PKGETC(配置)与 $TRIM_PKGVAR(会话/密钥),
+# 如需彻底清除请手工删除 @appconf/fnosoidcbridge 与 @appdata/fnosoidcbridge。
+# 数据库中注册的 oauth_app 行同样保留,请按 docs/recon.md 的 SQL 反向删除。
+set -u
+NGINX_CONF="/usr/trim/nginx/conf/conf.d/fnosoidcbridge.conf"
+if [ -f "$NGINX_CONF" ]; then
+  rm -f "$NGINX_CONF"
+  systemctl reload trim_nginx 2>/dev/null || { NGINX_PID=$(cat /run/nginx.pid 2>/dev/null || true); [ -n "$NGINX_PID" ] && kill -HUP "$NGINX_PID" 2>/dev/null || true; }
+fi
+exit 0

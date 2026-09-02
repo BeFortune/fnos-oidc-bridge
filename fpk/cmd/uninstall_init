@@ -1,0 +1,5 @@
+#!/bin/sh
+# uninstall_init (root): 停止服务
+set -u
+"${TRIM_APPDEST:-/var/apps/fnosoidcbridge}/cmd/main" stop 2>/dev/null
+exit 0

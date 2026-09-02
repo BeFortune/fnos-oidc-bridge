@@ -1,0 +1,58 @@
+{
+  "_注释": "fnOS 1.2.0505 实测模板。部署前只需修改下游 clients 的回调地址和 secret。",
+
+  "listen": "127.0.0.1:4223",
+  "base_url": "https://<你的域名>/oidc",
+  "public_prefix": "/oidc",
+  "gateway_prefix": "/app/fnosoidcbridge",
+  "data_dir": "./data",
+
+  "access_token_ttl_sec": 3600,
+  "refresh_token_ttl_sec": 2592000,
+  "code_ttl_sec": 120,
+  "session_ttl_sec": 43200,
+
+  "fnos": {
+    "base_url": "http://127.0.0.1:5666",
+    "public_base_url": "https://<你的飞牛域名>",
+    "insecure_skip_verify": false,
+    "client_id": "FNOSOIDCB1",
+    "client_secret": "从安全渠道填入 oauth_app 对应 secret",
+    "signin_path": "/signin",
+    "signin_extra_params": {},
+    "exchange_path": "/oauthapi/token",
+    "exchange_body": {},
+    "user_info": {
+      "endpoint": "/oauthapi/userinfo",
+      "method": "POST",
+      "token_header_name": "Authorization",
+      "token_header_scheme": "Bearer",
+      "body": {},
+      "extra_headers": {},
+      "claims": {
+        "sub": "data.uid",
+        "preferred_username": "data.username",
+        "name": "data.username",
+        "fnos_is_admin": "data.is_admin"
+      }
+    }
+  },
+
+  "clients": [
+    {
+      "client_id": "jellyfin",
+      "client_secret": "请改成随机长串",
+      "name": "Jellyfin",
+      "redirect_uris": ["http://192.168.1.100:8096/sso/OID/redirect/oidc"]
+    },
+    {
+      "client_id": "immich",
+      "client_secret": "请改成随机长串",
+      "name": "Immich",
+      "redirect_uris": ["http://192.168.1.100:2283/auth/login", "app.immich:///oauth-callback"]
+    }
+  ],
+
+  "allow_users": ["alice"],
+  "admin_users": ["alice"]
+}
