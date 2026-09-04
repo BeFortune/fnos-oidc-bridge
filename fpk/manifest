@@ -1,5 +1,5 @@
 appname      = fnosoidcbridge
-version      = 0.7.0
+version      = 0.7.1
 display_name = OIDC SSO Bridge
 desc         = Turn fnOS account login into a standard OIDC identity provider for self-hosted applications.
 platform     = all
@@ -15,4 +15,4 @@ install_type =
 install_dep_apps = 
 service_port = 4223
 checkport    = false
-changelog   = 0.7.0 对齐官方 wizard:安装时可填 Issuer 与监听端口,卸载可选保留配置;manifest 补开发者链接,关闭固定端口检查;0.6.0 备份精简与自定义端口
+changelog   = 0.7.1 redirect_uri 拒绝时服务端日志记录收到与已登记地址,错误页提示常见差异点(http/https、端口、尾斜杠);0.7.0 对齐官方 wizard:安装时可填 Issuer 与监听端口,卸载可选保留配置;manifest 补开发者链接,关闭固定端口检查;0.6.0 备份精简与自定义端口

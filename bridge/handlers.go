@@ -137,7 +137,10 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect := q.Get("redirect_uri")
 	if !client.allowsRedirect(redirect) {
-		s.errPage(w, http.StatusBadRequest, "redirect_uri 不合法", "与应用注册的回调地址不完全一致")
+		// 已登记的地址只进服务端日志,不回显到公开错误页,避免泄露 client 配置。
+		log.Printf("redirect_uri 被拒绝: client=%q 收到 %q,已登记 %q", client.ID, redirect, client.RedirectURIs)
+		s.errPage(w, http.StatusBadRequest, "redirect_uri 不合法", fmt.Sprintf(
+			"应用送来的回调地址与登记的不完全一致：%s。常见差异：http/https、端口、尾斜杠、大小写。已登记的地址请让管理员在配置页核对，或查看服务端日志。", redirect))
 		return
 	}
 	state := q.Get("state")

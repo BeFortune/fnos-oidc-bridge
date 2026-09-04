@@ -208,6 +208,52 @@ func TestAdminRejectsUnknownAndDuplicateClients(t *testing.T) {
 	}
 }
 
+func TestAdminSaveAddsSecondRedirectURI(t *testing.T) {
+	e := newAdminTestEnv(t)
+	payload := adminSaveRequest{
+		BaseURL: "https://nas.example.test/oidc", PublicPrefix: "/oidc",
+		FnOS: adminFnOSRequest{BaseURL: "http://127.0.0.1:5666", PublicBaseURL: "https://nas.example.test", ClientID: "FNOSBRIDGE"},
+		Clients: []adminClientSave{{ID: "jellyfin", Name: "Jellyfin", RedirectURIs: []string{
+			"https://jellyfin.example.test/cb",
+			"https://jellyfin.example.test/web/index.html",
+		}}},
+		AllowUsers: []string{"alice"}, AdminUsers: []string{"alice"},
+	}
+	resp, body := adminRequest(t, http.MethodPut, e.admin.URL+"/admin/api/config", payload, true)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("新增第二条回调地址保存应 200,得到 %d: %s", resp.StatusCode, body)
+	}
+	var out adminConfigResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Clients) != 1 || len(out.Clients[0].RedirectURIs) != 2 {
+		t.Fatalf("响应应含 2 条回调地址: %+v", out.Clients)
+	}
+	loaded, err := LoadConfig(e.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Clients[0].RedirectURIs) != 2 {
+		t.Fatalf("磁盘配置应有 2 条回调地址: %+v", loaded.Clients[0].RedirectURIs)
+	}
+	if loaded.Clients[0].Secret != "existing-client-secret" {
+		t.Fatal("已有 secret 不应被清掉")
+	}
+	// 保存后新回调地址应立即对 authorize 生效(热更新),不再报 redirect_uri 不合法。
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequest(http.MethodGet, e.public.URL+"/authorize?client_id=jellyfin&redirect_uri="+
+		"https%3A%2F%2Fjellyfin.example.test%2Fweb%2Findex.html&response_type=code&scope=openid&state=xyz", nil)
+	ar, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ar.Body.Close()
+	if ar.StatusCode != http.StatusFound {
+		t.Fatalf("新回调地址应被 authorize 接受(302),得到 %d", ar.StatusCode)
+	}
+}
+
 func TestRotateSecretReturnsOnceAndPersists(t *testing.T) {
 	e := newAdminTestEnv(t)
 	resp, body := adminRequest(t, http.MethodPost, e.admin.URL+"/admin/api/rotate-secret", map[string]string{"client_id": "jellyfin"}, true)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
@@ -8,10 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -365,9 +368,23 @@ func TestSecurityChecks(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("未知 client 应 400,得到 %d", resp.StatusCode)
 	}
+	var logBuf bytes.Buffer
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(os.Stderr)
 	resp = e.getFollowNone(t, e.bridge.URL+"/authorize?response_type=code&client_id=web&redirect_uri="+url.QueryEscape("http://evil.test/cb")+"&scope=openid")
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("未注册 redirect_uri 应 400,得到 %d", resp.StatusCode)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(page), "http://evil.test/cb") || !strings.Contains(string(page), "常见差异") {
+		t.Fatal("错误页应回显收到的 redirect_uri 并提示常见差异点")
+	}
+	if strings.Contains(string(page), "http://client.test/cb") {
+		t.Fatal("错误页不得泄露已登记的回调地址")
+	}
+	if !strings.Contains(logBuf.String(), "http://evil.test/cb") || !strings.Contains(logBuf.String(), "http://client.test/cb") {
+		t.Fatalf("服务端日志应记录收到与已登记的回调地址: %s", logBuf.String())
 	}
 }
 
